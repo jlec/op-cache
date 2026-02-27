@@ -21,6 +21,20 @@ pub struct Config {
 }
 
 fn default_socket_path() -> PathBuf {
+    // Prefer a user-owned runtime directory over world-writable /tmp.
+    // On Linux, XDG_RUNTIME_DIR (/run/user/UID/) is only writable by the
+    // owning user, preventing rogue socket pre-creation attacks.
+    if let Some(base) = directories::BaseDirs::new() {
+        if let Some(runtime_dir) = base.runtime_dir() {
+            // Linux: /run/user/UID/ — guaranteed user-exclusive
+            return runtime_dir.join("op-cache.sock");
+        }
+        // macOS / other: use user cache dir (user-owned, not world-writable)
+        if let Some(proj) = directories::ProjectDirs::from("", "", "op-cache") {
+            return proj.cache_dir().join("op-cache.sock");
+        }
+    }
+    // Final fallback (e.g. no $HOME set)
     PathBuf::from("/tmp/op-cache.sock")
 }
 
