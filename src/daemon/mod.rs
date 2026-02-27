@@ -3,6 +3,7 @@ pub mod server;
 
 use std::fs::File;
 use std::io::Write;
+use std::os::unix::fs::PermissionsExt;
 
 use fork::{daemon, Fork};
 use tracing::info;
@@ -45,8 +46,14 @@ pub fn run_foreground(config: Config) -> Result<(), Error> {
 fn run_daemon(config: Config) -> Result<(), Error> {
     // Setup logging to file
     let log_path = config.log_path();
+
+    // Set restrictive umask before creating log file (same pattern as socket)
+    let old_umask = unsafe { libc::umask(0o177) };
     let file = File::create(&log_path)
         .map_err(|e| Error::Internal(format!("failed to create log file: {}", e)))?;
+    unsafe { libc::umask(old_umask) };
+    std::fs::set_permissions(&log_path, std::fs::Permissions::from_mode(0o600))
+        .map_err(|e| Error::Internal(format!("failed to set log file permissions: {}", e)))?;
 
     tracing_subscriber::fmt()
         .with_writer(std::sync::Mutex::new(file))
@@ -61,8 +68,14 @@ fn run_daemon(config: Config) -> Result<(), Error> {
 fn run_daemon_inner(config: Config) -> Result<(), Error> {
     // Write PID file
     let pid_path = config.pid_path();
+
+    // Set restrictive umask before creating PID file (same pattern as socket)
+    let old_umask = unsafe { libc::umask(0o177) };
     let mut pid_file = File::create(&pid_path)
         .map_err(|e| Error::Internal(format!("failed to create pid file: {}", e)))?;
+    unsafe { libc::umask(old_umask) };
+    std::fs::set_permissions(&pid_path, std::fs::Permissions::from_mode(0o600))
+        .map_err(|e| Error::Internal(format!("failed to set pid file permissions: {}", e)))?;
     writeln!(pid_file, "{}", std::process::id())
         .map_err(|e| Error::Internal(format!("failed to write pid: {}", e)))?;
 
