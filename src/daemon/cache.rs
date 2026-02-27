@@ -1,11 +1,12 @@
 use moka::future::Cache as MokaCache;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
+use zeroize::Zeroizing;
 
 use crate::protocol::CacheStats;
 
 pub struct Cache {
-    inner: MokaCache<String, String>,
+    inner: MokaCache<String, Zeroizing<String>>,
     hits: AtomicU64,
     misses: AtomicU64,
 }
@@ -33,11 +34,12 @@ impl Cache {
             self.misses.fetch_add(1, Ordering::Relaxed);
         }
 
-        result
+        // Unwrap Zeroizing wrapper for protocol response (transient use)
+        result.map(|z| z.as_str().to_owned())
     }
 
     pub async fn insert(&self, key: &str, value: String) {
-        self.inner.insert(key.to_string(), value).await;
+        self.inner.insert(key.to_string(), Zeroizing::new(value)).await;
     }
 
     pub fn clear(&self) {
