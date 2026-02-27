@@ -107,7 +107,7 @@ Config file: `~/.config/op-cache/config.yaml`
 
 ```yaml
 socket_path: /tmp/op-cache.sock
-ttl_seconds: 86400      # Cache TTL (default: 24 hours)
+ttl_seconds: 3600       # Cache TTL (default: 1 hour)
 max_entries: 1000       # Max cached secrets
 op_path: op             # Path to op CLI
 op_timeout_seconds: 30  # Timeout for op commands
