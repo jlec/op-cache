@@ -1,6 +1,7 @@
 use std::os::unix::fs::PermissionsExt;
 use std::sync::Arc;
 use tokio::net::{UnixListener, UnixStream};
+use tokio::signal::unix::{signal, SignalKind};
 use tokio::sync::watch;
 use tracing::{debug, error, info};
 
@@ -49,6 +50,9 @@ impl Server {
         let (shutdown_tx, mut shutdown_rx) = watch::channel(false);
         let shutdown_tx = Arc::new(shutdown_tx);
 
+        let mut sigterm = signal(SignalKind::terminate())
+            .map_err(|e| Error::Internal(format!("failed to register SIGTERM handler: {}", e)))?;
+
         loop {
             tokio::select! {
                 result = listener.accept() => {
@@ -82,6 +86,11 @@ impl Server {
                 }
                 _ = tokio::signal::ctrl_c() => {
                     info!("ctrl-c received, shutting down");
+                    let _ = shutdown_tx.send(true);
+                    break;
+                }
+                _ = sigterm.recv() => {
+                    info!("SIGTERM received, shutting down gracefully");
                     let _ = shutdown_tx.send(true);
                     break;
                 }
