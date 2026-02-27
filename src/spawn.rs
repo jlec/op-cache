@@ -17,6 +17,14 @@ const POLL_INTERVAL: Duration = Duration::from_millis(50);
 pub fn ensure_daemon_running(config: &Config) -> Result<(), Error> {
     let lock_path = config.socket_path.with_extension("lock");
 
+    // Ensure the parent directory exists (socket may live in a user cache dir
+    // that hasn't been created yet — the daemon would create it on bind, but
+    // we need it here first for the lock file).
+    if let Some(parent) = lock_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| Error::SpawnFailed(format!("failed to create socket directory: {}", e)))?;
+    }
+
     // Open (and create if necessary) the lock file
     let lock_file = OpenOptions::new()
         .create(true)
