@@ -10,6 +10,14 @@ const POLL_INTERVAL: Duration = Duration::from_millis(50);
 
 /// Spawn the daemon if not already running
 pub fn ensure_daemon_running(config: &Config) -> Result<(), Error> {
+    // Ensure the parent directory exists (socket may live in a user cache dir
+    // that hasn't been created yet — the daemon would create it on bind, but
+    // we need it accessible here first before spawning).
+    if let Some(parent) = config.socket_path.parent() {
+        std::fs::create_dir_all(parent)
+            .map_err(|e| Error::SpawnFailed(format!("failed to create socket directory: {}", e)))?;
+    }
+
     if daemon::is_running(config) {
         return Ok(());
     }
