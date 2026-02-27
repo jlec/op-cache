@@ -1,7 +1,8 @@
+use std::fmt;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 pub enum Request {
     Get { key: String },
     Set { key: String, value: String },
@@ -9,6 +10,23 @@ pub enum Request {
     ClearCache,
     GetStats,
     Shutdown,
+}
+
+impl fmt::Debug for Request {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Request::Get { key } => f.debug_struct("Get").field("key", key).finish(),
+            Request::Set { key, .. } => f
+                .debug_struct("Set")
+                .field("key", key)
+                .field("value", &"[REDACTED]")
+                .finish(),
+            Request::Ping => write!(f, "Ping"),
+            Request::ClearCache => write!(f, "ClearCache"),
+            Request::GetStats => write!(f, "GetStats"),
+            Request::Shutdown => write!(f, "Shutdown"),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
