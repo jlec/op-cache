@@ -1,4 +1,5 @@
 use std::os::unix::fs::PermissionsExt;
+use std::os::unix::io::AsRawFd;
 use std::sync::Arc;
 use tokio::net::{UnixListener, UnixStream};
 use tokio::sync::watch;
@@ -54,6 +55,25 @@ impl Server {
                 result = listener.accept() => {
                     match result {
                         Ok((stream, _addr)) => {
+                            // Verify the connecting process belongs to the same user
+                            let my_uid = unsafe { libc::getuid() };
+                            match get_peer_uid(stream.as_raw_fd()) {
+                                Ok(peer_uid) if peer_uid == my_uid => {
+                                    // Authorized — same user, proceed
+                                }
+                                Ok(peer_uid) => {
+                                    error!(
+                                        "rejected connection: peer UID {} != daemon UID {}",
+                                        peer_uid, my_uid
+                                    );
+                                    continue;
+                                }
+                                Err(e) => {
+                                    error!("failed to verify peer credentials: {}", e);
+                                    continue;
+                                }
+                            }
+
                             let cache = Arc::clone(&self.cache);
                             let mut conn_shutdown_rx = shutdown_rx.clone();
                             let conn_shutdown_tx = Arc::clone(&shutdown_tx);
@@ -134,6 +154,54 @@ async fn handle_connection(
                 }
             }
         }
+    }
+}
+
+/// Returns the UID of the process that connected to the given socket fd.
+///
+/// Uses SO_PEERCRED on Linux and getpeereid on macOS.
+/// On other platforms, falls back to accepting the connection with a warning.
+fn get_peer_uid(fd: std::os::unix::io::RawFd) -> std::io::Result<u32> {
+    #[cfg(target_os = "linux")]
+    {
+        let mut cred = libc::ucred {
+            pid: 0,
+            uid: 0,
+            gid: 0,
+        };
+        let mut len = std::mem::size_of::<libc::ucred>() as libc::socklen_t;
+        let ret = unsafe {
+            libc::getsockopt(
+                fd,
+                libc::SOL_SOCKET,
+                libc::SO_PEERCRED,
+                &mut cred as *mut _ as *mut libc::c_void,
+                &mut len,
+            )
+        };
+        if ret != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(cred.uid)
+    }
+    #[cfg(target_os = "macos")]
+    {
+        let mut uid: libc::uid_t = 0;
+        let mut gid: libc::gid_t = 0;
+        let ret = unsafe { libc::getpeereid(fd, &mut uid, &mut gid) };
+        if ret != 0 {
+            return Err(std::io::Error::last_os_error());
+        }
+        Ok(uid)
+    }
+    #[cfg(not(any(target_os = "linux", target_os = "macos")))]
+    {
+        // Peer credential check not available on this platform.
+        // Fall back to accepting connections; socket filesystem permissions
+        // (0o600) remain the enforcement layer.
+        tracing::warn!("peer credential verification not supported on this platform");
+        let _ = fd;
+        Ok(unsafe { libc::getuid() })
     }
 }
 
