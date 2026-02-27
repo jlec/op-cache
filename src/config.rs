@@ -39,7 +39,10 @@ fn default_socket_path() -> PathBuf {
 }
 
 fn default_ttl_seconds() -> u64 {
-    86400 // 24 hours
+    // 1 hour: balances performance (avoids repeated op read calls) with
+    // the risk of serving revoked credentials after rotation. Operators
+    // with stricter rotation policies should set a lower value in config.
+    3600
 }
 
 fn default_max_entries() -> u64 {
