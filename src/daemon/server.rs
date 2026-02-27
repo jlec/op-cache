@@ -25,6 +25,16 @@ impl Server {
     }
 
     pub async fn run(&self) -> Result<(), Error> {
+        // Ensure the socket's parent directory exists and is owner-only
+        if let Some(parent) = self.config.socket_path.parent() {
+            if parent != std::path::Path::new("/tmp") {
+                std::fs::create_dir_all(parent)
+                    .map_err(|e| Error::Internal(format!("failed to create socket directory: {}", e)))?;
+                std::fs::set_permissions(parent, std::fs::Permissions::from_mode(0o700))
+                    .map_err(|e| Error::Internal(format!("failed to set socket directory permissions: {}", e)))?;
+            }
+        }
+
         // Remove existing socket if present
         let _ = std::fs::remove_file(&self.config.socket_path);
 

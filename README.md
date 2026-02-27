@@ -84,7 +84,7 @@ Cache Statistics:
 ```
 ┌─────────────┐                      ┌─────────────┐
 │  op-cache   │◄── Unix Socket ────►│   Daemon    │
-│  (client)   │   /tmp/op-cache.sock │  (cache)    │
+│  (client)   │  (user-owned dir)    │  (cache)    │
 └──────┬──────┘                      └─────────────┘
        │
        │ cache miss
@@ -106,7 +106,7 @@ The client (not the daemon) executes `op read`. This ensures proper access to yo
 Config file: `~/.config/op-cache/config.yaml`
 
 ```yaml
-socket_path: /tmp/op-cache.sock
+# socket_path: /tmp/op-cache.sock  # override default if needed
 ttl_seconds: 86400      # Cache TTL (default: 24 hours)
 max_entries: 1000       # Max cached secrets
 op_path: op             # Path to op CLI
@@ -127,6 +127,10 @@ All settings are optional - sensible defaults are used.
 
 - Secrets are cached in memory only (never written to disk)
 - Cache is per-user (Unix socket permissions)
+- Socket is placed in a user-exclusive directory by default:
+  - Linux: `$XDG_RUNTIME_DIR` (`/run/user/UID/`) — only writable by the owning user
+  - macOS: `~/Library/Caches/op-cache/` — user-owned, not world-writable
+  - This prevents rogue processes from pre-creating the socket in world-writable `/tmp` to intercept secrets
 - TTL ensures secrets expire (default 24 hours)
 - `op-cache clear` immediately purges all cached secrets
 - Daemon stops cleanly on `op-cache stop` or system shutdown
